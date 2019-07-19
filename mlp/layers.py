@@ -15,6 +15,7 @@ respect to the layer parameters.
 import numpy as np
 import mlp.initialisers as init
 from mlp import DEFAULT_SEED
+from scipy import signal
 
 
 class Layer(object):
@@ -448,7 +449,26 @@ class ConvolutionalLayer(LayerWithParameters):
         Returns:
             outputs: Array of layer outputs of shape (batch_size, num_output_channels, output_height, output_width).
         """
-        raise NotImplementedError
+        M = inputs.shape[2]
+        N = inputs.shape[3]
+        F = self.kernels.shape[3]
+        batch_szie = inputs.shape[0]
+        out_channel_size = self.kernels.shape[0]
+        out_x_size = M - F + 1
+        out_y_size = N - F + 1
+        outputs = np.zeros((batch_szie*out_channel_size*out_x_size*out_y_size)).reshape(batch_szie, out_channel_size, out_x_size, out_y_size)
+        #loop over batch_size
+        for one_batch in range(inputs.shape[0]):
+            # loop over output channel
+            for kernel in range(self.kernels.shape[0]):
+                channel_sum = np.zeros(out_x_size*out_y_size).reshape(out_x_size, out_y_size) + self.biases[kernel]
+                # loop over input channel
+                for i in range(inputs[one_batch].shape[0]):
+                    channel_i = signal.convolve2d(inputs[one_batch][i],self.kernels[kernel][i], mode = 'valid')
+                    channel_sum += channel_i
+                outputs[one_batch, kernel] = channel_sum
+        return outputs
+        # raise NotImplementedError
 
     def bprop(self, inputs, outputs, grads_wrt_outputs):
         """Back propagates gradients through a layer.
@@ -467,7 +487,27 @@ class ConvolutionalLayer(LayerWithParameters):
             Array of gradients with respect to the layer inputs of shape
             (batch_size, num_input_channels, input_height, input_width).
         """
-        raise NotImplementedError
+        P = self.kernel_height - 1
+        def padwithtens(vector, pad_width, iaxis, kwargs):
+            vector[:pad_width[0]] = 0
+            vector[-pad_width[1]:] = 0
+            return vector
+        
+        grads_wrt_inputs = np.zeros((grads_wrt_outputs.shape[0], self.num_input_channels, self.input_height, self.input_width))
+        for one_batch in range(grads_wrt_outputs.shape[0]):
+            container1 = np.zeros((self.num_input_channels, self.input_height, self.input_width))
+            #loop over output channel
+            for nc_output in range(self.num_output_channels):
+                container2 = np.zeros((self.num_input_channels, self.input_height, self.input_width))
+                #loop over input channel
+                for nc_input in range(self.num_input_channels):
+                    container2[nc_input] = signal.correlate2d(np.pad(grads_wrt_outputs[one_batch][nc_output], P, padwithtens), \
+                                                              self.kernels[nc_output][nc_input], mode = 'valid')
+                    # container2[nc_input] = signal.correlate2d(grads_wrt_outputs[one_batch][nc_output], self.kernels[nc_output][nc_input], mode = 'full')
+                container1 += container2
+            grads_wrt_inputs[one_batch] = container1
+        return grads_wrt_inputs
+        # raise NotImplementedError
 
     def grads_wrt_params(self, inputs, grads_wrt_outputs):
         """Calculates gradients with respect to layer parameters.
@@ -480,7 +520,21 @@ class ConvolutionalLayer(LayerWithParameters):
             list of arrays of gradients with respect to the layer parameters
             `[grads_wrt_kernels, grads_wrt_biases]`.
         """
-        raise NotImplementedError
+        grads_wrt_kernels = np.zeros(self.kernels_shape)
+        for one_batch in range(inputs.shape[0]):
+            for nc_output in range(self.num_output_channels):
+                for nc_input in range(self.num_input_channels):
+                    rotated_input = np.rot90(np.rot90(inputs[one_batch][nc_input]))
+                    grads_wrt_kernels[nc_output][nc_input] += signal.convolve2d(rotated_input, grads_wrt_outputs[one_batch][nc_output], mode = 'valid')
+        
+        grads_wrt_biases = np.zeros(2)
+        for one_batch in range(inputs.shape[0]):
+            for nc_output in range(self.num_output_channels):
+#                 for nc_input in range(self.num_input_channels):
+                 grads_wrt_biases[nc_output] += grads_wrt_outputs[one_batch][nc_output].sum()
+        return [grads_wrt_kernels, grads_wrt_biases]
+        
+#         raise NotImplementedError
 
     def params_penalty(self):
         """Returns the parameter dependent penalty term for this layer.
@@ -532,7 +586,7 @@ class MaxPooling2DLayer(Layer):
         self.input_width = input_width
         self.size = size
         self.stride = stride
-        self.cache = None
+        self.cache = []
 
     def fprop(self, inputs):
         """
@@ -541,7 +595,20 @@ class MaxPooling2DLayer(Layer):
         :return: The output of the max pooling operation. Assuming a stride=2 the output should have a shape of
         (b, c, (input_height - size)/stride + 1, (input_width - size)/stride + 1)
         """
-        raise NotImplementedError
+        index = []
+        outputs = np.zeros((inputs.shape[0], inputs.shape[1], self.input_height//self.size, self.input_width//self.size))
+        for one_batch in range(inputs.shape[0]):
+            for nc_input in range(inputs.shape[1]):
+                output = np.zeros((self.input_height//self.size, self.input_width//self.size))
+                for y,j in enumerate(np.arange(0, self.input_width, self.stride)):
+                    for x,i in enumerate(np.arange(0, self.input_height, self.stride)):
+                        output[x, y] = np.max(inputs[one_batch][nc_input][i:i+self.size,j:j+self.size])
+                        small_index = np.where(inputs[one_batch][nc_input][i:i+self.size,j:j+self.size] == output[x, y])
+                        self.cache.append((one_batch, nc_input, i+small_index[0], j+small_index[1]))
+#                         self.cache.append(np.where(inputs == output[x, y]))
+                outputs[one_batch][nc_input] = output
+        return outputs
+#         raise NotImplementedError
 
     def bprop(self, inputs, outputs, grads_wrt_outputs):
         """
@@ -552,7 +619,18 @@ class MaxPooling2DLayer(Layer):
         :param grads_wrt_outputs: The grads wrt to the outputs, of shape equal to that of the outputs.
         :return: grads_wrt_input, of shape equal to the inputs.
         """
-        raise NotImplementedError
+        grads_wrt_inputs_1 = np.zeros((inputs.shape[0], inputs.shape[1],self.input_height, self.input_width))
+        pooling_matrix = np.zeros((inputs.shape[0], inputs.shape[1],self.input_height, self.input_width))
+        for one_batch in range(inputs.shape[0]):
+            for nc_input in range(inputs.shape[1]):
+                for c,j in enumerate(np.arange(0, grads_wrt_inputs_1[one_batch][nc_input].shape[1], self.stride)):
+                    for d,i in enumerate(np.arange(0, grads_wrt_inputs_1[one_batch][nc_input].shape[0], self.stride)):
+                        grads_wrt_inputs_1[one_batch][nc_input][i:i+self.size, j:j+self.size] = grads_wrt_outputs[one_batch][nc_input][d, c]
+        
+        for i in range(len(self.cache)):
+            pooling_matrix[self.cache[i]] = 1
+        return (pooling_matrix * grads_wrt_inputs_1)
+#         raise NotImplementedError
 
 
 class ReluLayer(Layer):

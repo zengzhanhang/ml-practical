@@ -19,7 +19,7 @@ test_data = data_providers.EMNISTDataProvider('test', batch_size=args.batch_size
 custom_conv_net = ConvolutionalNetwork(  # initialize our network object, in this case a ConvNet
     input_shape=(args.batch_size, args.image_num_channels, args.image_height, args.image_width),
     dim_reduction_type=args.dim_reduction_type,
-    num_output_classes=train_data.num_classes, num_filters=args.num_filters, num_layers=args.num_layers, use_bias=False)
+    num_output_classes=train_data.num_classes, num_filters=args.num_filters, num_layers=args.num_layers, stride=args.stride, dilation=args.dilation, dilation_grows=args.dilation_grows, use_bias=False)
 
 conv_experiment = ExperimentBuilder(network_model=custom_conv_net,
                                     experiment_name=args.experiment_name,
