@@ -1,3 +1,9 @@
+> This repo is forked from the `Machine Learning Practical(INFR11132)`  course repo (coursework 2 branch). This repo is to save my solution for mlpractical coursework 2, which includes implementation of forward/backward propagation of convolutional layer, pooling layer, and some basic experiments based on PyTorch.
+>
+> The orifinal repo at: Machine Learning Practical github repository https://github.com/CSTR-Edinburgh/mlpractical
+>
+> Machine Learning Practical course repository http://www.inf.ed.ac.uk/teaching/courses/mlp/index-2018.html
+
 # Machine Learning Practical
 
 This repository contains the code for the University of Edinburgh [School of Informatics](http://www.inf.ed.ac.uk) course [Machine Learning Practical](http://www.inf.ed.ac.uk/teaching/courses/mlp/).
